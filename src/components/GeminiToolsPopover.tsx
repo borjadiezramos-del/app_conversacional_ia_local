@@ -13,7 +13,8 @@ import {
   Music,
   MessageSquare,
   Sparkles,
-  Check
+  Check,
+  Globe
 } from 'lucide-react';
 import { ChatMode } from '../types';
 
@@ -25,6 +26,8 @@ interface GeminiToolsPopoverProps {
   currentMode: ChatMode;
   onSelectMode: (mode: ChatMode) => void;
   onGenerateImagePrompt?: () => void;
+  isWebSearchActive?: boolean;
+  onToggleWebSearch?: () => void;
 }
 
 export const GeminiToolsPopover: React.FC<GeminiToolsPopoverProps> = ({
@@ -35,6 +38,8 @@ export const GeminiToolsPopover: React.FC<GeminiToolsPopoverProps> = ({
   currentMode,
   onSelectMode,
   onGenerateImagePrompt,
+  isWebSearchActive = false,
+  onToggleWebSearch,
 }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +126,54 @@ export const GeminiToolsPopover: React.FC<GeminiToolsPopoverProps> = ({
           <ChevronRight className="w-4 h-4 text-[#94a3b8]" />
         </button>
       </div>
+
+      {/* DIVISOR SUTIL */}
+      <div className="my-1.5 border-t border-[#f1f5f9] mx-2" />
+
+      {/* BÚSQUEDA WEB EN VIVO (CONEXIÓN A INTERNET) */}
+      {onToggleWebSearch && (
+        <div className="p-1">
+          <button
+            type="button"
+            onClick={() => {
+              onToggleWebSearch();
+            }}
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-2xl transition group text-left cursor-pointer border ${
+              isWebSearchActive
+                ? 'bg-[#dcf0fa] border-[#2a7b9b]/40 text-[#2a7b9b] shadow-xs'
+                : 'bg-white border-[#e2e8f0] hover:bg-[#f8fafc] text-[#141413]'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                isWebSearchActive ? 'bg-[#2a7b9b] text-white' : 'bg-[#f1f5f9] text-[#5e6d75]'
+              }`}>
+                <Globe className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold text-[#141413]">Búsqueda Web en Vivo</span>
+                  {isWebSearchActive && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#2a7b9b] text-white">
+                      ACTIVA
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-[#5e6d75]">
+                  {isWebSearchActive ? 'Consultando internet en tiempo real' : 'Conecta el modelo a internet'}
+                </span>
+              </div>
+            </div>
+            <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center p-0.5 ${
+              isWebSearchActive ? 'bg-[#2a7b9b]' : 'bg-[#cbd5e1]'
+            }`}>
+              <div className={`w-3 h-3 rounded-full bg-white transition-transform ${
+                isWebSearchActive ? 'translate-x-4' : 'translate-x-0'
+              }`} />
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* DIVISOR SUTIL */}
       <div className="my-1.5 border-t border-[#f1f5f9] mx-2" />

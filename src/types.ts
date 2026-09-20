@@ -143,6 +143,22 @@ export interface GeneratedMusicItem {
   createdAt: string;
 }
 
+export interface WebSearchResult {
+  id?: string;
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
+  publishedDate?: string;
+}
+
+export interface WebSearchMeta {
+  query: string;
+  results: WebSearchResult[];
+  scrapedUrl?: string;
+  executedAt: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -158,6 +174,7 @@ export interface Message {
   imageGen?: GeneratedImageItem;
   videoGen?: GeneratedVideoItem;
   musicGen?: GeneratedMusicItem;
+  webSearch?: WebSearchMeta;
 }
 
 export interface Conversation {

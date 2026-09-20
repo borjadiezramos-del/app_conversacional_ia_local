@@ -18,8 +18,18 @@ import {
   GuidedLearningSession,
   GeneratedImageItem,
   GeneratedVideoItem,
-  GeneratedMusicItem
+  GeneratedMusicItem,
+  WebSearchResult,
+  WebSearchMeta
 } from './types';
+import { 
+  searchWeb, 
+  scrapeUrl, 
+  extractUrlsFromText, 
+  buildGroundedPrompt, 
+  queryLocalOllama,
+  ScrapedPageResult
+} from './services/webSearchService';
 import { DEFAULT_LOCAL_MODELS } from './data/localModels';
 import { INITIAL_PROJECTS } from './data/initialProjects';
 
@@ -366,8 +376,13 @@ export default function App() {
     );
   };
 
-  // Envío de mensaje en el chat central con soporte de modos: Canva, Deep Research, Code, Aprendizaje guiado, General
-  const handleSendMessage = (text: string, attachments?: AttachedFile[], mode: ChatMode = chatMode) => {
+  // Envío de mensaje en el chat central con soporte de modos: Canva, Deep Research, Code, Aprendizaje guiado, General y Búsqueda Web en Vivo
+  const handleSendMessage = async (
+    text: string, 
+    attachments?: AttachedFile[], 
+    mode: ChatMode = chatMode,
+    useWebSearch: boolean = false
+  ) => {
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsgId = `msg-${Date.now()}`;
 
@@ -405,8 +420,35 @@ export default function App() {
       );
     }
 
+    // 1.5. Ejecución de Búsqueda Web en Tiempo Real si está habilitada o si hay URLs en el texto
+    const urlsInText = extractUrlsFromText(text);
+    const shouldSearchWeb = useWebSearch || urlsInText.length > 0;
+
+    let webResults: WebSearchResult[] = [];
+    let scrapedResult: ScrapedPageResult | null = null;
+    let generatedWebSearchMeta: WebSearchMeta | undefined = undefined;
+
+    if (shouldSearchWeb && text.trim()) {
+      try {
+        if (urlsInText.length > 0) {
+          scrapedResult = await scrapeUrl(urlsInText[0]);
+        }
+        webResults = await searchWeb(text);
+        if (webResults.length > 0 || scrapedResult) {
+          generatedWebSearchMeta = {
+            query: text,
+            results: webResults,
+            scrapedUrl: scrapedResult?.url,
+            executedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+      } catch (err) {
+        console.error('Error durante la búsqueda web:', err);
+      }
+    }
+
     // 2. Respuesta generada inteligente según el modo activo
-    setTimeout(() => {
+    setTimeout(async () => {
       const respTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const clean = text.toLowerCase().trim();
       let assistantReply = '';
@@ -540,26 +582,33 @@ El presente documento formaliza los requerimientos, directrices y entregables cl
               tag: 'Finanzas',
             },
           ],
-          sources: [
-            {
-              title: 'Manual de Arquitectura y Seguridad en IA Local (BDR Internal Standards)',
-              domain: 'bdr.internal/docs/security-ai',
-              snippet: 'Enfoque zero-trust para inferencia local con Ollama y aceleración por GPU privada.',
-              reliability: 'Verificada',
-            },
-            {
-              title: 'Estudio Comparativo de Rendimiento en Inferencia Local (Gartner / IEEE)',
-              domain: 'ieee.org/publications/local-inference-2025',
-              snippet: 'Métricas de throughput en arquitecturas ARM y x86 para modelos densos y MoE.',
-              reliability: 'Alta',
-            },
-            {
-              title: 'Marco Regulatorio Europeo de Inteligencia Artificial (EU AI Act Compliance)',
-              domain: 'europa.eu/ai-act/compliance-guidelines',
-              snippet: 'Exención de riesgos de transferencia transfronteriza al operar en entornos locales aislados.',
-              reliability: 'Verificada',
-            },
-          ],
+          sources: webResults.length > 0
+            ? webResults.map(r => ({
+                title: r.title,
+                domain: r.domain,
+                snippet: r.snippet,
+                reliability: 'Verificada' as const
+              }))
+            : [
+                {
+                  title: 'Manual de Arquitectura y Seguridad en IA Local (BDR Internal Standards)',
+                  domain: 'bdr.internal/docs/security-ai',
+                  snippet: 'Enfoque zero-trust para inferencia local con Ollama y aceleración por GPU privada.',
+                  reliability: 'Verificada',
+                },
+                {
+                  title: 'Estudio Comparativo de Rendimiento en Inferencia Local (Gartner / IEEE)',
+                  domain: 'ieee.org/publications/local-inference-2025',
+                  snippet: 'Métricas de throughput en arquitecturas ARM y x86 para modelos densos y MoE.',
+                  reliability: 'Alta',
+                },
+                {
+                  title: 'Marco Regulatorio Europeo de Inteligencia Artificial (EU AI Act Compliance)',
+                  domain: 'europa.eu/ai-act/compliance-guidelines',
+                  snippet: 'Exención de riesgos de transferencia transfronteriza al operar en entornos locales aislados.',
+                  reliability: 'Verificada',
+                },
+              ],
         };
 
         assistantReply = `He completado una **investigación profunda (Deep Research)** sobre: *"${text}"* para ${projectContextLabel}.${filesNote}\n\nSe han analizado las variables críticas, contrastado fuentes y estructurado el informe ejecutivo con hallazgos e hipótesis validadas que puedes examinar a continuación:`;
@@ -940,7 +989,33 @@ export class BDRLocalAIService {
       // MODO 8: ESTÁNDAR / GENERAL (Consulta habitual directa)
       // -------------------------------------------------------------
       } else {
-        if (clean.includes('métricas') || clean.includes('dashboard') || clean.includes('ejecutiv')) {
+        if (generatedWebSearchMeta && (webResults.length > 0 || scrapedResult)) {
+          // Si el usuario tiene Ollama ejecutándose localmente en su Mac M1, intentamos inferencia con prompt enriquecido (RAG)
+          const groundedPrompt = buildGroundedPrompt(text, webResults, scrapedResult);
+          let localOllamaReply: string | null = null;
+          try {
+            localOllamaReply = await queryLocalOllama(selectedModel.id, groundedPrompt);
+          } catch (e) {
+            console.log('Ollama local no disponible en este momento:', e);
+          }
+
+          if (localOllamaReply && localOllamaReply.trim()) {
+            assistantReply = localOllamaReply;
+          } else {
+            // Síntesis grounded de alta fidelidad con fuentes web citadas
+            const topSources = webResults.slice(0, 5);
+            const sourceBullets = topSources
+              .map((r, i) => `**[${i + 1}] [${r.title}](${r.url})** • *${r.domain}*\n> "${r.snippet}"`)
+              .join('\n\n');
+
+            let scrapedContext = '';
+            if (scrapedResult) {
+              scrapedContext = `\n\n📄 **Lectura directa del contenido web:** *${scrapedResult.title}*\n${scrapedResult.text.slice(0, 450)}...`;
+            }
+
+            assistantReply = `He consultado internet en tiempo real para resolver: **"${text}"**.\n\n### 🌐 Hallazgos y fuentes verificadas en vivo:\n${sourceBullets}${scrapedContext}\n\n---\n📌 **Inferencia y Privacidad en Mac M1:**\nLa consulta ha recopilado las fuentes anteriores y las ha preparado para su procesamiento. Cuando ejecutes en tu terminal \`ollama run ${selectedModel.id}\`, el modelo local resolverá estas consultas RAG directamente en tu memoria unificada sin consumir swap.`;
+          }
+        } else if (clean.includes('métricas') || clean.includes('dashboard') || clean.includes('ejecutiv')) {
           assistantReply = `Aquí tienes el desglose de métricas ejecutivas en ${projectContextLabel}:${filesNote}\n\n• **Ingresos YTD:** € 1.284.950 (+14.2% respecto a objetivo)\n• **Clientes Activos:** 3.420 (Retención neta: 96.4%)\n• **Eficiencia Operativa:** 94.8% (Tiempo de ciclo: 1.2 días)\n\nProcesado localmente con **${selectedModel.name}**.`;
         } else if (clean.includes('propuesta') || clean.includes('plantilla')) {
           assistantReply = `He preparado la estructura corporativa para ${projectContextLabel}:${filesNote}\n\n1. **Resumen Ejecutivo**: Alcance y metas estratégicas.\n2. **Propuesta Técnica**: Arquitectura de modelos locales y seguridad de datos.\n3. **Cronograma y Entregables**: Hitos mensuales.\n4. **Condiciones Operativas**.\n\n¿Deseas profundizar en algún punto?`;
@@ -958,6 +1033,7 @@ export class BDRLocalAIService {
         content: assistantReply,
         timestamp: respTime,
         mode: mode,
+        webSearch: generatedWebSearchMeta,
         canvasDoc: generatedCanvasDoc,
         deepResearch: generatedDeepResearch,
         guidedLearning: generatedGuidedLearning,

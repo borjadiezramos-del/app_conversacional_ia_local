@@ -15,7 +15,8 @@ import {
   Paperclip,
   Image as ImageIcon,
   Film,
-  Music
+  Music,
+  Globe
 } from 'lucide-react';
 import { Message, LocalModel, AttachedFile, Conversation, ChatMode, CanvasDocument } from '../types';
 import { ModelSelector } from './ModelSelector';
@@ -30,11 +31,12 @@ import { DocumentAttachModal } from './DocumentAttachModal';
 import { ImageGenerationCard } from './ImageGenerationCard';
 import { VideoGenerationCard } from './VideoGenerationCard';
 import { MusicGenerationCard } from './MusicGenerationCard';
+import { WebSourcesCard } from './WebSourcesCard';
 import { getFileCategory } from '../data/localModels';
 
 interface CenteredChatAreaProps {
   messages: Message[];
-  onSendMessage: (text: string, attachments?: AttachedFile[], mode?: ChatMode) => void;
+  onSendMessage: (text: string, attachments?: AttachedFile[], mode?: ChatMode, useWebSearch?: boolean) => void;
   isGenerating: boolean;
   currentProject: string | null;
   models: LocalModel[];
@@ -138,6 +140,7 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
   const [isToolsPopoverOpen, setIsToolsPopoverOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isWebSearchActive, setIsWebSearchActive] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -192,7 +195,7 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
     if (e) e.preventDefault();
     if ((!inputText.trim() && attachments.length === 0) || isGenerating) return;
 
-    onSendMessage(inputText.trim(), attachments, chatMode);
+    onSendMessage(inputText.trim(), attachments, chatMode, isWebSearchActive);
     setInputText('');
     setAttachments([]);
     setIsToolsPopoverOpen(false);
@@ -258,7 +261,10 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
     if (chatMode === 'music_gen') {
       return `Describe el ritmo, tempo y estilo de música o pista de audio...`;
     }
-    return `Pregunta a Gemini`;
+    if (isWebSearchActive) {
+      return `Buscar en internet o consultar con ${selectedModel.name}...`;
+    }
+    return `Pregunta a ${selectedModel.name} (Modo local)...`;
   };
 
   return (
@@ -427,6 +433,11 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
                         </div>
                       )}
 
+                      {/* Fuentes web en tiempo real */}
+                      {msg.webSearch && (
+                        <WebSourcesCard webSearch={msg.webSearch} />
+                      )}
+
                       {/* Texto del mensaje */}
                       <div className="whitespace-pre-wrap font-sans">
                         {msg.content}
@@ -530,7 +541,7 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
             className="bg-white rounded-[32px] sm:rounded-full border border-[#cbd5e1] focus-within:border-[#2a7b9b] focus-within:ring-2 focus-within:ring-[#2a7b9b]/20 shadow-[0_8px_30px_rgba(42,123,155,0.08)] transition-all px-3 py-2 sm:px-4 sm:py-2.5 flex items-center gap-2 relative"
           >
             {/* Botón Acción Izquierda: '+' cerrado, '✕' abierto, despliega el Popover */}
-            <div className="relative shrink-0">
+            <div className="relative shrink-0 flex items-center gap-1">
               <button
                 id="btn-gemini-tools-trigger"
                 type="button"
@@ -545,6 +556,25 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
                 )}
               </button>
 
+              {/* Botón dedicado de Búsqueda Web en Vivo */}
+              <button
+                id="btn-toggle-web-search"
+                type="button"
+                onClick={() => setIsWebSearchActive(!isWebSearchActive)}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer shrink-0 ${
+                  isWebSearchActive
+                    ? 'bg-[#dcf0fa] text-[#2a7b9b] border border-[#2a7b9b]/40 shadow-xs ring-2 ring-[#2a7b9b]/20'
+                    : 'bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#5e6d75] hover:text-[#141413]'
+                }`}
+                title={
+                  isWebSearchActive
+                    ? 'Búsqueda web en vivo ACTIVA: el modelo consultará internet (clic para desactivar)'
+                    : 'Activar búsqueda web en tiempo real: conecta el modelo a internet'
+                }
+              >
+                <Globe className={`w-4 h-4 ${isWebSearchActive ? 'text-[#2a7b9b]' : ''}`} />
+              </button>
+
               {/* Popover */}
               <GeminiToolsPopover
                 isOpen={isToolsPopoverOpen}
@@ -553,6 +583,8 @@ export const CenteredChatArea: React.FC<CenteredChatAreaProps> = ({
                 onAddFromDriveClick={() => setIsDriveModalOpen(true)}
                 currentMode={chatMode}
                 onSelectMode={onChangeChatMode}
+                isWebSearchActive={isWebSearchActive}
+                onToggleWebSearch={() => setIsWebSearchActive(!isWebSearchActive)}
               />
             </div>
 
