@@ -1,0 +1,6 @@
+{
+  "name": "BDR Workspace",
+  "description": "Espacio de trabajo corporativo BDR con chat centralizado, panel lateral de Canva editable en tiempo real, Deep Research, Code Workspace y Aprendizaje Guiado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
